@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ID Tag Finder</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="card">
+        <p class="eyebrow">ID Tag Barang</p>
+        <h1>Masukkan Kode Tag</h1>
+        <p class="description">
+          Masukkan kode 12 karakter yang ada di bandul. Jika kodenya benar, kamu akan
+          diarahkan ke halaman kontak pemilik.
+        </p>
+
+        <form id="code-form" class="code-form" novalidate>
+          <label for="code" class="input-label">Input code 12 Digit</label>
+          <input
+            id="code"
+            name="code"
+            type="text"
+            maxlength="14"
+            placeholder="XXXX-XXXX-XXXX"
+            autocomplete="off"
+            required
+          />
+          <button type="submit">Buka Direct Link</button>
+        </form>
+
+        <p id="message" class="message" aria-live="polite"></p>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
