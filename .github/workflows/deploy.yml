@@ -3,15 +3,26 @@ name: Deploy
 on:
   push:
     branches:
-      - main
+      - "**"
 
 jobs:
   deploy:
     runs-on: self-hosted
 
     steps:
-      - name: Deploy on server
+      - name: Deploy on server (safe)
         run: |
+          set -e
           cd /home/kuya/apps/key-lookup
-          git pull origin main
+          git fetch origin
+          git checkout ${{ github.ref_name }} || git switch -c ${{ github.ref_name }} origin/${{ github.ref_name }}
+          git pull origin ${{ github.ref_name }}
+
+          # Kalau belum ada app (package.json belum ada), stop dengan sukses
+          if [ ! -f package.json ]; then
+            echo "No package.json yet. Repo is currently empty (only .github). Skipping npm install."
+            exit 0
+          fi
+
           npm install
+          pm2 restart key-lookup || true
