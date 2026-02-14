@@ -47,8 +47,9 @@
       let inputFocused = false;
       let isVerifying = false;
       let pingPongTimer = null;
-      let handledByBeforeInput = false;
       let isComposing = false;
+      let composingPreview = '';
+      let deleteHandledByBeforeInput = false;
 
       const boxes = [];
       const digitsEls = [];
@@ -120,14 +121,15 @@
 
       function clearCaptureInput() {
         hiddenInput.value = '';
+        try {
+          hiddenInput.setSelectionRange(0, 0);
+        } catch (_error) {
+          // Some mobile keyboards can throw here; ignore and keep input usable.
+        }
       }
 
-      function isPrintableChar(char) {
-        return !/[\u0000-\u001F\u007F]/.test(char);
-      }
-
-      function filterPrintable(text) {
-        return Array.from(text || '').filter(isPrintableChar).join('');
+      function sanitizeInputChars(text) {
+        return String(text ?? '').replace(/[\r\n\t]/g, '');
       }
 
       function clampCaret(index) {
@@ -135,31 +137,14 @@
       }
 
       function writeTextAtCaret(text) {
-        const printable = filterPrintable(text);
-        if (!printable) return;
+        const chars = sanitizeInputChars(text);
+        if (!chars) return;
 
-        code[caretIndex] = printable.slice(-1);
-        if (caretIndex < MAX_DIGITS - 1) {
-          caretIndex += 1;
-        }
+        code[caretIndex] = chars.slice(-1);
       }
 
       function clearAtBackspace() {
-        // If current slot has content, clear it first.
-        if (code[caretIndex]) {
-          code[caretIndex] = '';
-          return;
-        }
-
-        // Otherwise move left and clear.
-        if (caretIndex > 0) {
-          caretIndex -= 1;
-          code[caretIndex] = '';
-          return;
-        }
-
-        // caretIndex === 0 and slot already empty: keep as-is.
-        code[0] = '';
+        code[caretIndex] = '';
       }
 
       function clearAtDelete() {
@@ -169,11 +154,6 @@
       function commitSlotState() {
         clearCaptureInput();
         render();
-      }
-
-      function nextEmptyIndex() {
-        const empty = code.findIndex((char) => char === '');
-        return empty === -1 ? MAX_DIGITS : empty;
       }
 
 
@@ -193,14 +173,23 @@
       hiddenInput.addEventListener('compositionstart', () => {
         if (isVerifying) return;
         isComposing = true;
+        composingPreview = '';
         hasUserInteracted = true;
+      });
+
+      hiddenInput.addEventListener('compositionupdate', (event) => {
+        if (isVerifying) return;
+        hasUserInteracted = true;
+        composingPreview = sanitizeInputChars(event.data || hiddenInput.value || event.target?.value || '');
+        render();
       });
 
       hiddenInput.addEventListener('compositionend', (event) => {
         if (isVerifying) return;
         hasUserInteracted = true;
         isComposing = false;
-        writeTextAtCaret(event.data || hiddenInput.value);
+        writeTextAtCaret(event.data || hiddenInput.value || event.target?.value || '');
+        composingPreview = '';
         commitSlotState();
       });
 
@@ -214,7 +203,8 @@
 
         if (event.key === 'Enter') {
           event.preventDefault();
-          verifyBtn.click();
+          caretIndex = clampCaret(caretIndex + 1);
+          render();
           return;
         }
 
@@ -267,23 +257,9 @@
           return;
         }
 
-        hasUserInteracted = true;
-        handledByBeforeInput = false;
-
-        if (isComposing) {
-          if (event.inputType.startsWith('insert')) {
-            event.preventDefault();
-          }
-          return;
-        }
-
-        if (event.inputType === 'insertText') {
-          return;
-        }
-
         if (event.inputType === 'deleteContentBackward') {
           event.preventDefault();
-          handledByBeforeInput = true;
+          deleteHandledByBeforeInput = true;
           clearAtBackspace();
           commitSlotState();
           return;
@@ -291,16 +267,9 @@
 
         if (event.inputType === 'deleteContentForward') {
           event.preventDefault();
-          handledByBeforeInput = true;
+          deleteHandledByBeforeInput = true;
           clearAtDelete();
           commitSlotState();
-          return;
-        }
-
-        if (event.inputType === 'insertFromPaste') {
-          event.preventDefault();
-          handledByBeforeInput = true;
-          clearCaptureInput();
         }
       });
 
@@ -310,13 +279,17 @@
           return;
         }
 
-        if (handledByBeforeInput) {
-          handledByBeforeInput = false;
-          clearCaptureInput();
+        hasUserInteracted = true;
+
+        if (isComposing) {
           return;
         }
 
-        hasUserInteracted = true;
+        if (deleteHandledByBeforeInput) {
+          deleteHandledByBeforeInput = false;
+          clearCaptureInput();
+          return;
+        }
 
         if (event.inputType === 'deleteContentBackward') {
           clearAtBackspace();
@@ -330,7 +303,7 @@
           return;
         }
 
-        writeTextAtCaret(hiddenInput.value);
+        writeTextAtCaret(event.data || hiddenInput.value || event.target?.value || '');
         commitSlotState();
       });
 
@@ -343,17 +316,22 @@
         commitSlotState();
       });
 
+      otpWrap.addEventListener('pointerdown', () => {
+        focusInput();
+      });
+
       otpWrap.addEventListener('click', () => {
         hasUserInteracted = true;
         hoverIndex = null;
-        if (nextEmptyIndex() >= MAX_DIGITS) {
-          caretIndex = MAX_DIGITS - 1;
-        } else {
-          caretIndex = nextEmptyIndex();
-        }
         focusInput();
         render();
       });
+
+      document.addEventListener('keydown', () => {
+        if (document.activeElement !== hiddenInput) {
+          focusInput();
+        }
+      }, true);
 
       // ---------- warning animation ----------
       function runWarningAnimation() {
@@ -388,13 +366,14 @@
 
       function render() {
         for (let i = 0; i < MAX_DIGITS; i += 1) {
-          const value = code[i];
+          let value = code[i];
+          if (isComposing && i === caretIndex && composingPreview) {
+            value = composingPreview.slice(-1);
+          }
+
           if (lastRendered[i] !== value) {
             const span = digitsEls[i];
-            span.textContent = '';
-            requestAnimationFrame(() => {
-              span.textContent = value;
-            });
+            span.textContent = value;
             lastRendered[i] = value;
           }
 
