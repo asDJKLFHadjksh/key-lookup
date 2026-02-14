@@ -264,9 +264,9 @@
         }
       });
 
-      hiddenInput.addEventListener('beforeinput', (event) => {
+      hiddenInput.addEventListener('input', (event) => {
         if (isVerifying) {
-          event.preventDefault();
+          clearCaptureInput();
           return;
         }
 
