@@ -48,6 +48,7 @@
       let isVerifying = false;
       let pingPongTimer = null;
       let isComposing = false;
+      let deleteHandledByBeforeInput = false;
 
       const boxes = [];
       const digitsEls = [];
@@ -126,12 +127,8 @@
         }
       }
 
-      function isPrintableChar(char) {
-        return !/[\u0000-\u001F\u007F]/.test(char);
-      }
-
-      function filterPrintable(text) {
-        return Array.from(text || '').filter(isPrintableChar).join('');
+      function sanitizeInputChars(text) {
+        return String(text ?? '').replace(/[\r\n\t]/g, '');
       }
 
       function clampCaret(index) {
@@ -139,10 +136,10 @@
       }
 
       function writeTextAtCaret(text) {
-        const printable = filterPrintable(text);
-        if (!printable) return;
+        const chars = sanitizeInputChars(text);
+        if (!chars) return;
 
-        for (const ch of printable) {
+        for (const ch of chars) {
           code[caretIndex] = ch;
           if (caretIndex < MAX_DIGITS - 1) {
             caretIndex += 1;
@@ -273,9 +270,36 @@
           return;
         }
 
+        if (event.inputType === 'deleteContentBackward') {
+          event.preventDefault();
+          deleteHandledByBeforeInput = true;
+          clearAtBackspace();
+          commitSlotState();
+          return;
+        }
+
+        if (event.inputType === 'deleteContentForward') {
+          event.preventDefault();
+          deleteHandledByBeforeInput = true;
+          clearAtDelete();
+          commitSlotState();
+        }
+      });
+
+      hiddenInput.addEventListener('input', (event) => {
+        if (isVerifying) {
+          clearCaptureInput();
+          return;
+        }
+
         hasUserInteracted = true;
 
         if (isComposing) {
+          return;
+        }
+
+        if (deleteHandledByBeforeInput) {
+          deleteHandledByBeforeInput = false;
           clearCaptureInput();
           return;
         }
@@ -305,6 +329,10 @@
         commitSlotState();
       });
 
+      otpWrap.addEventListener('pointerdown', () => {
+        focusInput();
+      });
+
       otpWrap.addEventListener('click', () => {
         hasUserInteracted = true;
         hoverIndex = null;
@@ -316,6 +344,12 @@
         focusInput();
         render();
       });
+
+      document.addEventListener('keydown', () => {
+        if (document.activeElement !== hiddenInput) {
+          focusInput();
+        }
+      }, true);
 
       // ---------- warning animation ----------
       function runWarningAnimation() {
