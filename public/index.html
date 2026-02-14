@@ -140,30 +140,11 @@
         const chars = sanitizeInputChars(text);
         if (!chars) return;
 
-        for (const ch of chars) {
-          code[caretIndex] = ch;
-          if (caretIndex < MAX_DIGITS - 1) {
-            caretIndex += 1;
-          }
-        }
+        code[caretIndex] = chars.slice(-1);
       }
 
       function clearAtBackspace() {
-        // If current slot has content, clear it first.
-        if (code[caretIndex]) {
-          code[caretIndex] = '';
-          return;
-        }
-
-        // Otherwise move left and clear.
-        if (caretIndex > 0) {
-          caretIndex -= 1;
-          code[caretIndex] = '';
-          return;
-        }
-
-        // caretIndex === 0 and slot already empty: keep as-is.
-        code[0] = '';
+        code[caretIndex] = '';
       }
 
       function clearAtDelete() {
@@ -173,11 +154,6 @@
       function commitSlotState() {
         clearCaptureInput();
         render();
-      }
-
-      function nextEmptyIndex() {
-        const empty = code.findIndex((char) => char === '');
-        return empty === -1 ? MAX_DIGITS : empty;
       }
 
 
@@ -227,7 +203,8 @@
 
         if (event.key === 'Enter') {
           event.preventDefault();
-          verifyBtn.click();
+          caretIndex = clampCaret(caretIndex + 1);
+          render();
           return;
         }
 
@@ -346,11 +323,6 @@
       otpWrap.addEventListener('click', () => {
         hasUserInteracted = true;
         hoverIndex = null;
-        if (nextEmptyIndex() >= MAX_DIGITS) {
-          caretIndex = MAX_DIGITS - 1;
-        } else {
-          caretIndex = nextEmptyIndex();
-        }
         focusInput();
         render();
       });
