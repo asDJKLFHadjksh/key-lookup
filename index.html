@@ -227,10 +227,10 @@
 
       .real-input {
         position: absolute;
-        width: 1px;
-        height: 1px;
         opacity: 0;
-        pointer-events: none;
+        width: 2px;
+        height: 2px;
+        left: -9999px;
       }
     </style>
   </head>
@@ -275,6 +275,7 @@
       let inputFocused = false;
       let isVerifying = false;
       let pingPongTimer = null;
+      let handledByBeforeInput = false;
 
       const boxes = [];
       const digitsEls = [];
@@ -347,6 +348,14 @@
 
       function syncHiddenInput() {
         hiddenInput.value = code.join('');
+      }
+
+      function sanitizeAll(str) {
+        return (str || '')
+          .replace(/[-\s]/g, '')
+          .replace(/[^a-zA-Z0-9]/g, '')
+          .toUpperCase()
+          .slice(0, MAX_DIGITS);
       }
 
       function clampCaret(index) {
@@ -462,6 +471,7 @@
         }
 
         hasUserInteracted = true;
+        handledByBeforeInput = false;
 
         if (event.inputType === 'insertText') {
           const data = event.data || '';
@@ -470,6 +480,7 @@
             return;
           }
           event.preventDefault();
+          handledByBeforeInput = true;
           writeCharsAtCaret(data);
           commitSlotState();
           return;
@@ -477,6 +488,7 @@
 
         if (event.inputType === 'deleteContentBackward') {
           event.preventDefault();
+          handledByBeforeInput = true;
           clearAtBackspace();
           commitSlotState();
           return;
@@ -484,6 +496,7 @@
 
         if (event.inputType === 'deleteContentForward') {
           event.preventDefault();
+          handledByBeforeInput = true;
           clearAtDelete();
           commitSlotState();
           return;
@@ -491,8 +504,18 @@
       });
 
       hiddenInput.addEventListener('input', () => {
-        // Keep hidden input mirrored to slot state; visual state is slot-driven.
-        syncHiddenInput();
+        if (handledByBeforeInput) {
+          handledByBeforeInput = false;
+          return;
+        }
+
+        const v = sanitizeAll(hiddenInput.value);
+        code = Array(MAX_DIGITS).fill('');
+        for (let i = 0; i < v.length; i += 1) code[i] = v[i];
+
+        caretIndex = Math.min(v.length, MAX_DIGITS - 1);
+        hiddenInput.value = code.join('');
+        render();
       });
 
       // ---------- paste sanitization ----------
