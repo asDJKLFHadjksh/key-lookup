@@ -374,10 +374,21 @@
       }
 
       function clearAtBackspace() {
+        // If current slot has content, clear it first.
+        if (code[caretIndex]) {
+          code[caretIndex] = '';
+          return;
+        }
+
+        // Otherwise move left and clear.
         if (caretIndex > 0) {
           caretIndex -= 1;
+          code[caretIndex] = '';
+          return;
         }
-        code[caretIndex] = '';
+
+        // caretIndex === 0 and slot already empty: keep as-is.
+        code[0] = '';
       }
 
       function clearAtDelete() {
