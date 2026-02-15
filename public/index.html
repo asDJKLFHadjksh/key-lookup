@@ -361,7 +361,7 @@
       // state (raw/prevRaw/timers)
       let rawCode = '';
       let prevRaw = '';
-      let isSubmitting = false;
+      let isVerifying = false;
       let introRunning = true;
       let isClearing = false;
       let verifyingInterval = null;
@@ -407,9 +407,9 @@
       function applyFieldState(nextRaw = rawCode) {
         const length = nextRaw.length;
         fieldShell.classList.toggle('complete', length === MAX_LEN && !fieldShell.classList.contains('error'));
-        codeInput.disabled = isSubmitting || introRunning || isClearing;
-        clearBtn.disabled = length === 0 || isSubmitting || introRunning || isClearing;
-        submitBtn.disabled = isSubmitting || introRunning || isClearing;
+        codeInput.disabled = isVerifying || introRunning || isClearing;
+        clearBtn.disabled = length === 0 || isVerifying || introRunning || isClearing;
+        submitBtn.disabled = isVerifying || introRunning || isClearing;
       }
 
       function instantRender(raw = rawCode) {
@@ -509,7 +509,19 @@
           window.clearInterval(verifyingInterval);
           verifyingInterval = null;
         }
-        boxEls.forEach((box) => box.classList.remove('verifying-active'));
+      }
+
+      function resetInteractionState() {
+        console.log('[verify] resetInteractionState');
+        stopVerifying();
+        isVerifying = false;
+        codeInput.disabled = false;
+        submitBtn.disabled = false;
+        boxEls.forEach((box) => {
+          box.classList.remove('error');
+          clearTransientBoxClasses(box);
+        });
+        applyFieldState(rawCode);
       }
 
       // startVerifying/stopVerifying
@@ -567,11 +579,7 @@
 
         await Promise.all(tasks);
         rawCode = '';
-        prevRaw = '';
-        codeInput.value = '';
-        instantRender('');
         isClearing = false;
-        applyFieldState('');
       }
 
       async function runInvalidPingpongOnce() {
@@ -587,22 +595,19 @@
 
       // handleInvalidResult (one-cycle pingpong + clear)
       async function handleInvalidResult(type) {
-        stopVerifying();
         fieldShell.classList.add('error');
         boxEls.forEach((box) => box.classList.add('error'));
 
         await runInvalidPingpongOnce();
         stopVerifying();
         await clearFromEndToStart();
-
-        isSubmitting = false;
-        applyFieldState(rawCode);
+        resetInteractionState();
 
         statusEl.textContent = type === 'inactive' ? 'Kode tidak aktif.' : 'Kode tidak ditemukan.';
       }
 
       codeInput.addEventListener('input', () => {
-        if (isSubmitting || introRunning || isClearing) return;
+        if (introRunning || isClearing) return;
 
         if (fieldShell.classList.contains('error') && codeInput.value.length > 0) {
           removeErrorStyles();
@@ -641,7 +646,7 @@
 
 
       fieldShell.addEventListener('click', () => {
-        if (introRunning || isSubmitting) return;
+        if (introRunning || isVerifying) return;
         codeInput.focus({ preventScroll: true });
       });
 
@@ -653,7 +658,7 @@
       });
 
       clearBtn.addEventListener('click', () => {
-        if (isSubmitting || introRunning || isClearing) return;
+        if (introRunning || isClearing) return;
         stopVerifying();
         clearPendingTimeouts();
         statusEl.textContent = '';
@@ -661,12 +666,16 @@
 
         (async () => {
           await clearFromEndToStart();
+          codeInput.value = '';
+          prevRaw = '';
+          resetInteractionState();
+          instantRender('');
           codeInput.focus({ preventScroll: true });
         })();
       });
 
       submitBtn.addEventListener('click', async () => {
-        if (isSubmitting || introRunning || isClearing) return;
+        if (isVerifying || introRunning || isClearing) return;
 
         if (rawCode.length < MAX_LEN) {
           statusEl.textContent = 'Kode belum lengkap. Pastikan 12 karakter ya.';
@@ -674,7 +683,8 @@
           return;
         }
 
-        isSubmitting = true;
+        console.log('[verify] start');
+        isVerifying = true;
         stopVerifying();
         clearPendingTimeouts();
         statusEl.textContent = 'Memproses pencarian...';
@@ -689,9 +699,10 @@
           });
 
           const payload = await response.json();
-          stopVerifying();
 
           if (response.ok && payload.ok && payload.redirect) {
+            console.log('[verify] end (success)');
+            resetInteractionState();
             window.location.href = payload.redirect;
             return;
           }
@@ -706,15 +717,15 @@
             return;
           }
 
+          console.log('[verify] end (unexpected response)');
+          resetInteractionState();
           statusEl.textContent = 'Maaf, terjadi kendala saat memproses kode. Silakan coba lagi.';
         } catch (_error) {
-          stopVerifying();
+          console.log('[verify] end (network error)');
+          resetInteractionState();
           statusEl.textContent = 'Tidak bisa terhubung ke server. Periksa koneksi lalu coba lagi.';
         } finally {
-          if (!isSubmitting) return;
-          stopVerifying();
-          isSubmitting = false;
-          applyFieldState(rawCode);
+          console.log('[verify] end');
         }
       });
 
